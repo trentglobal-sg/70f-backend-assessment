@@ -12,9 +12,12 @@ const mysql = require('mysql2/promise');
 
 const app = express();
 
-
 // use hbs as our 'view engine'
 app.set('view engine', 'hbs')
+// this enables form processing
+app.use(express.urlencoded({
+    extended: true  // true allow forms to contain arrays and objects
+}))
 
 async function main() {
     let connection = await mysql.createConnection({
@@ -51,8 +54,23 @@ async function main() {
         })
     })
 
-    app.post('/customers', async function (req, res) {
+    app.get('/customers/create', async function (req, res) {
+        const [companies] = await connection.execute(`SELECT company_id, name FROM Companies`);
+        res.render('customers/create', {
+            companies: companies
+        })
+    })
 
+    app.post('/customers/create', async function(req,res){
+        const {first_name, last_name, rating, company_id} = req.body;
+        const sql = ` INSERT INTO Customers (first_name, last_name, rating, company_id)
+  VALUES (?, ?, ?, ?);`
+        const bindings = [first_name, last_name, rating, company_id];
+        // prepared statements - it's a defense against SQL Injection
+        await connection.execute(sql, bindings)
+  
+        res.redirect('/customers'); // tells browser to go to send a URL
+      
     })
 
     app.get('/about-us', function (req, res) {
