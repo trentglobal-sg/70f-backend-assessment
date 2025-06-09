@@ -14,7 +14,7 @@ const app = express();
 
 // use hbs as our 'view engine'
 app.set('view engine', 'hbs')
-// this enables form processing
+// this enables form processing (former people use body-parser)
 app.use(express.urlencoded({
     extended: true  // true allow forms to contain arrays and objects
 }))
@@ -56,21 +56,22 @@ async function main() {
 
     app.get('/customers/create', async function (req, res) {
         const [companies] = await connection.execute(`SELECT company_id, name FROM Companies`);
+
         res.render('customers/create', {
             companies: companies
         })
     })
 
-    app.post('/customers/create', async function(req,res){
-        const {first_name, last_name, rating, company_id} = req.body;
+    app.post('/customers/create', async function (req, res) {
+        const { first_name, last_name, rating, company_id } = req.body;
         const sql = ` INSERT INTO Customers (first_name, last_name, rating, company_id)
   VALUES (?, ?, ?, ?);`
         const bindings = [first_name, last_name, rating, company_id];
         // prepared statements - it's a defense against SQL Injection
         await connection.execute(sql, bindings)
-  
+
         res.redirect('/customers'); // tells browser to go to send a URL
-      
+
     })
 
     app.get('/about-us', function (req, res) {
@@ -79,6 +80,38 @@ async function main() {
 
     app.get('/contact-us', function (req, res) {
         res.render('contact-us')
+    })
+
+    // READ EMPLOYEES: DISPLAY ALL THE EMPLOYEES
+    app.get('/employees', async function (req, res) {
+        const [employees] = await connection.query(`SELECT * FROM Employees JOIN Departments
+   ON Employees.department_id = Departments.department_id`);
+
+        res.render('employees/index', {
+            employees
+        })
+    });
+
+
+    app.get('/employees/create', async function (req, res) {
+        const [departments] = await connection.execute(`SELECT * FROM Departments`);
+        res.render('employees/create', {
+            departments
+        })
+    })
+
+    app.post('/employees/create', async function (req, res) {
+        try {
+            const bindings = [req.body.first_name, req.body.last_name, req.body.department_id];
+            await connection.execute(`INSERT INTO Employees (first_name, last_name, department_id) 
+                VALUES (?,?,?)`, bindings);
+        } catch (e) {
+            console.log(e);
+        } finally {
+            res.redirect('/employees');
+        }
+
+
     })
 }
 main();
