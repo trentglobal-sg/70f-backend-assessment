@@ -45,6 +45,28 @@ async function main() {
 
     app.get('/customers', async function (req, res) {
 
+        // get the search terms from req.query
+        const {first_name, last_name} = req.query;
+
+        let basicQuery = `SELECT * FROM Customers JOIN Companies
+                    ON Customers.company_id = Companies.company_id WHERE 1`
+
+        const bindings = [];
+
+        // if the user entered a first name, modif the basic quer
+        // with a WHERE at the back to search for it
+        if (first_name) {
+            basicQuery = basicQuery + " AND first_name = ?";
+            bindings.push(first_name);
+        }
+
+        if (last_name) {
+            basicQuery = basicQuery + " AND last_name = ?";
+            bindings.push(last_name);
+        }
+
+        console.log(basicQuery);
+
         // connection.execute will return an array
         // but only index 0 contains the rows data
         // the other indexes contain meta data
@@ -53,12 +75,10 @@ async function main() {
         // is the same as:
         // let results = await connection.execute('...');
         // let customers = results[0];
-        let [customers] = await connection.execute(`
-                SELECT * FROM Customers JOIN Companies
-                    ON Customers.company_id = Companies.company_id;
-        `);
+        let [customers] = await connection.execute(basicQuery, bindings);
         res.render('customers/index', {
-            customers: customers
+            customers: customers,
+            first_name, last_name
         })
     })
 
