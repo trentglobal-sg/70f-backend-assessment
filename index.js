@@ -4,6 +4,14 @@ const waxOn = require('wax-on');
 // setup waxOn on handlebars
 waxOn.on(hbs.handlebars);
 waxOn.setLayoutPath("./views/layouts");
+
+// handlebars helpers setup
+const helpers = require('handlebars-helpers');
+helpers({
+    'handlebars': hbs.handlebars
+})
+
+
 require('dotenv').config();
 
 // use the version of mysql2 that support promises
@@ -74,6 +82,49 @@ async function main() {
 
     })
 
+    app.get('/customers/:id/update', async function(req,res){
+        const customerId = req.params.id;
+        const [rows] = await connection.execute(`SELECT * FROM Customers WHERE customer_id = ?`, [customerId]);
+        const [companies] = await connection.execute(`SELECT * FROM Companies`);
+        res.render('customers/update', {
+            customer: rows[0],
+            companies
+        });
+    })
+
+    app.post('/customers/:id/update', async function(req,res){
+        const customerId = req.params.id;
+        const {first_name, last_name, rating, company_id} = req.body;
+        await connection.execute(`
+            UPDATE Customers SET first_name=?, last_name=?, rating=?, company_id=?
+            WHERE customer_id = ?`, [first_name, last_name, rating, company_id, customerId ]);
+        res.redirect('/customers');
+    })
+
+    app.get('/customers/:id/delete', async function (req, res) {
+        const customerId = req.params.id;
+        // even if there's only one result, connection.execute will return an array
+        const [rows] = await connection.execute(`SELECT * FROM Customers WHERE customer_id = ?`, [customerId]);
+        const customer = rows[0];
+        res.render('customers/delete', {
+            customer
+        })
+
+    })
+
+    app.post('/customers/:id/delete', async function (req, res) {
+        try {
+            const customerId = req.params.id;
+            await connection.execute("DELETE FROM Sales WHERE customer_id = ?", [customerId]);
+            await connection.execute("DELETE FROM EmployeeCustomer WhERE customer_id = ?", [customerId]);
+            await connection.execute(`DELETE FROM Customers WHERE customer_id = ?`, [customerId]);
+            res.redirect('/customers');
+        } catch (e) {
+            console.log(e);
+            res.send("Unable to delete because of relationship. Press [BACK] and try again")
+        } 
+    })
+
     app.get('/about-us', function (req, res) {
         res.render('about-us')
     })
@@ -110,8 +161,6 @@ async function main() {
         } finally {
             res.redirect('/employees');
         }
-
-
     })
 }
 main();
