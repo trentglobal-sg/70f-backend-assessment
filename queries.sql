@@ -9,3 +9,10 @@ SELECT * FROM Customers JOIN Companies
 
 INSERT INTO Employees (first_name, last_name, department_id) 
  VALUES ('Andy', 'Lau', 2);
+
+ DELETE FROM Customers WHERE customer_id = 5;
+
+ UPDATE Customers SET first_name="Andy2", last_name="Lau2", rating="1", company_id="1"
+  WHERE customer_id = 7;
+
+SELECT * FROM Customers JOIN EmployeeCustomer ON Customers.customer_id = EmployeeCustomer.customer_id WHERE Customers.customer_id = 10;

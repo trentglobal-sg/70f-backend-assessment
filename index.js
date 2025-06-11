@@ -46,7 +46,7 @@ async function main() {
     app.get('/customers', async function (req, res) {
 
         // get the search terms from req.query
-        const {first_name, last_name} = req.query;
+        const { first_name, last_name } = req.query;
 
         let basicQuery = `SELECT * FROM Customers JOIN Companies
                     ON Customers.company_id = Companies.company_id WHERE 1`
@@ -84,41 +84,96 @@ async function main() {
 
     app.get('/customers/create', async function (req, res) {
         const [companies] = await connection.execute(`SELECT company_id, name FROM Companies`);
+        const [employees] = await connection.execute(`SELECT employee_id, first_name, last_name FROM Employees`);
 
         res.render('customers/create', {
-            companies: companies
+            companies: companies,
+            employees: employees
         })
     })
 
     app.post('/customers/create', async function (req, res) {
-        const { first_name, last_name, rating, company_id } = req.body;
-        const sql = ` INSERT INTO Customers (first_name, last_name, rating, company_id)
-  VALUES (?, ?, ?, ?);`
-        const bindings = [first_name, last_name, rating, company_id];
-        // prepared statements - it's a defense against SQL Injection
-        await connection.execute(sql, bindings)
 
-        res.redirect('/customers'); // tells browser to go to send a URL
+        try {
+            await connection.beginTransaction();
+            const { first_name, last_name, rating, company_id } = req.body;
+            const sql = ` INSERT INTO Customers (first_name, last_name, rating, company_id)
+                    VALUES (?, ?, ?, ?);`
+            const bindings = [first_name, last_name, rating, company_id];
+            // prepared statements - it's a defense against SQL Injection
+            const [results] = await connection.execute(sql, bindings);
+
+            // get the primary key (aka the customer_id) of the newly created customer
+            const customerId = results.insertId;
+
+            if (req.body.employees) {
+                for (let employee of req.body.employees) {
+                    const sql = `INSERT INTO EmployeeCustomer (employee_id, customer_id) VALUES (?,?)`;
+                    const bindings = [employee, customerId];
+                    await connection.execute(sql, bindings);
+                }
+            }
+
+            await connection.commit(); // changes to the database is finalized
+            res.redirect('/customers'); // tells browser to go to send a URL
+
+        } catch (e) {
+            await connection.rollback(); // undo every change done so far
+            res.redirect('/customers');
+        }
 
     })
 
-    app.get('/customers/:id/update', async function(req,res){
+    app.get('/customers/:id/update', async function (req, res) {
         const customerId = req.params.id;
         const [rows] = await connection.execute(`SELECT * FROM Customers WHERE customer_id = ?`, [customerId]);
         const [companies] = await connection.execute(`SELECT * FROM Companies`);
+        const [employees] = await connection.execute(`SELECT * FROM Employees`);
+        const [currentEmployees] = await connection.execute(`SELECT * FROM EmployeeCustomer WHERE customer_id = ?`, [customerId]);
+        // exmaple: currentEmployees will be an array of two objects:
+        // [ {employee_id: 2, customer_id:10}, {employee_id:3, customer_id:10}]
+        // but the goal is to extract the employee_id ONLY and put them in an array (i,e [2, 3]);
+        const currentEmployeeIDs = currentEmployees.map(employee => employee.employee_id);
+
         res.render('customers/update', {
             customer: rows[0],
-            companies
+            companies,
+            employees,
+            currentEmployeeIDs
         });
     })
 
-    app.post('/customers/:id/update', async function(req,res){
-        const customerId = req.params.id;
-        const {first_name, last_name, rating, company_id} = req.body;
-        await connection.execute(`
+    app.post('/customers/:id/update', async function (req, res) {
+        try {
+            await connection.beginTransaction();
+
+            const customerId = req.params.id;
+            const { first_name, last_name, rating, company_id } = req.body;
+
+            await connection.execute(`
             UPDATE Customers SET first_name=?, last_name=?, rating=?, company_id=?
-            WHERE customer_id = ?`, [first_name, last_name, rating, company_id, customerId ]);
-        res.redirect('/customers');
+            WHERE customer_id = ?`, [first_name, last_name, rating, company_id, customerId]);
+
+            //  For updating many to many relationships
+            // 1. DELETE ALL existing the relationships
+            // 2. RE-INSERT the relationships based on the form
+            await connection.execute(`DELETE FROM EmployeeCustomer WHERE customer_id = ?`, [customerId]);
+
+            if (req.body.employees) {
+                for (let employee of req.body.employees) {
+                    const sql = `INSERT INTO EmployeeCustomer (employee_id, customer_id) VALUES (?,?)`;
+                    const bindings = [employee, customerId];
+                    await connection.execute(sql, bindings);
+                }
+            }
+
+            await connection.commit();
+            res.redirect('/customers');
+        } catch (e) {
+            await connection.rollback();
+            res.redirect('/customers');
+        }
+
     })
 
     app.get('/customers/:id/delete', async function (req, res) {
@@ -142,7 +197,7 @@ async function main() {
         } catch (e) {
             console.log(e);
             res.send("Unable to delete because of relationship. Press [BACK] and try again")
-        } 
+        }
     })
 
     app.get('/about-us', function (req, res) {
